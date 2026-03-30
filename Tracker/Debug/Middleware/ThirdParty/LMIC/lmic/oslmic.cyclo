@@ -1,0 +1,13 @@
+../Middleware/ThirdParty/LMIC/lmic/oslmic.h:179:19:os_jobIsTimed	1
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:42:5:os_init_ex	2
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:51:6:os_init	2
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:57:10:os_getTime	1
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:62:12:unlinkjob	3
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:72:18:getJobQueue	2
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:77:6:os_clearCallback	1
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:86:6:os_setCallback	2
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:113:7:os_setIdleJobFunction	1
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:124:6:os_setTimedCallback	4
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:154:6:os_runloop	1
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:160:6:os_runloop_once	5
+../Middleware/ThirdParty/LMIC/lmic/oslmic.c:183:7:os_queryTimeCriticalJobs	3
