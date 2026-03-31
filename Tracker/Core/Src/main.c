@@ -67,49 +67,106 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t rx_byte;                 // Catches the incoming character in the background
-uint8_t gps_rx_buffer[100];      // Holds the assembled sentence
-volatile uint16_t rx_index = 0;  // Tracks where we are in the buffer
-volatile uint8_t sentence_ready = 0; // Flag: 1 when a full sentence is assembled
-volatile uint8_t sentence_start = 0;
-char lora_payload[128];
+/* --- GPS & UART Variables --- */
+uint8_t rx_byte;
+uint8_t gps_rx_buffer[100];
+volatile uint16_t rx_index = 0;
+volatile uint8_t sentence_ready = 0;
 
-// 1. Define your Pin Map (Matching your hal.h struct)
+/* --- LMIC Timing & Hardware --- */
+const unsigned TX_INTERVAL = 60;
+static osjob_t sendjob;
+
 const lmic_pinmap lmic_pins = {
-    .nss = 0, // Logic handled in lmic_hal.c
+    .nss = 0,
     .rxtx = LMIC_UNUSED_PIN,
     .rst = 0,
     .dio = {0, 0, LMIC_UNUSED_PIN},
 };
 
-// 2. OTAA Keys (Example values - Get these from ChirpStack)
+/* --- LoRaWAN Keys & Fleet Identity --- */
 void os_getArtEui (u1_t* buf) { memcpy(buf, "\x00\x00\x00\x00\x00\x00\x00\x00", 8); }
-void os_getDevEui (u1_t* buf) { memcpy(buf, "\xe7\x8e\x5f\xa8\x26\xcc\x93\x10", 8); }
 void os_getDevKey (u1_t* buf) { memcpy(buf, "\xd1\xf6\x4f\xda\xef\x7d\xf2\xa8\xa4\x23\xc6\x35\x9a\x00\xcc\x2e", 16); }
+
+typedef struct {
+    uint8_t devEui[8];
+} TrackerIdentity;
+
+const TrackerIdentity Fleet[16] = {
+    {{0xe7, 0x8e, 0x5f, 0xa8, 0x26, 0xcc, 0x93, 0x10}}, // ID 0
+    {{0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}, // ID 1
+    {{0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03}}  // ID 2
+    // Add remaining DevEUIs here
+};
+
+uint8_t active_tracker_id = 0;
+
+uint8_t read_dip_switches(void) {
+    uint8_t id = 0;
+    if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_11) == GPIO_PIN_SET) id |= (1 << 0);
+    if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_8) == GPIO_PIN_SET) id |= (1 << 1);
+    if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_SET) id |= (1 << 2);
+    if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_3) == GPIO_PIN_SET) id |= (1 << 3);
+    return id;
+}
+
+void os_getDevEui (u1_t* buf) {
+    memcpy(buf, Fleet[active_tracker_id].devEui, 8);
+}
 
 // 3. Simple TX Job
 static osjob_t sendjob;
 
+/* --- LoRaWAN Transmission & Event Logic --- */
 void do_send(osjob_t* j) {
-    static uint8_t mydata[] = "Hello Davao!";
-    LMIC_setTxData2(1, mydata, sizeof(mydata)-1, 0);
+    if (LMIC.opmode & OP_TXRXPEND) {
+        printf("OP_TXRXPEND, not sending\n");
+    } else {
+        int32_t lat_int = (int32_t)(decimalLat * 100000);
+        int32_t lon_int = (int32_t)(decimalLong * 100000);
+        uint8_t payload[8];
+
+        payload[0] = (lat_int >> 24) & 0xFF;
+        payload[1] = (lat_int >> 16) & 0xFF;
+        payload[2] = (lat_int >> 8) & 0xFF;
+        payload[3] = lat_int & 0xFF;
+
+        payload[4] = (lon_int >> 24) & 0xFF;
+        payload[5] = (lon_int >> 16) & 0xFF;
+        payload[6] = (lon_int >> 8) & 0xFF;
+        payload[7] = lon_int & 0xFF;
+
+        LMIC_setTxData2(1, payload, sizeof(payload), 0);
+        printf("Queued GPS: Lat %f, Lon %f\n", decimalLat, decimalLong);
+    }
 }
+
 void onEvent (ev_t ev) {
     switch(ev) {
         case EV_JOINING:
-            printf("Step 1: Radio is broadcasting Join Request...\n");
+            printf("Joining...\n");
+            for (int i = 0; i < 16; i++) {
+                if (i != 0 && i != 1) { LMIC_disableChannel(i); }
+            }
             break;
-        case EV_TXCOMPLETE:
-            printf("Step 2: Transmission finished! (Waiting for response...)\n");
-            break;
+
         case EV_JOINED:
-            printf("Step 3: SUCCESS! Gateway accepted the tracker.\n");
+            printf("Join Success.\n");
+            LMIC_setLinkCheckMode(0);
+            do_send(&sendjob);
             break;
+
         case EV_JOIN_FAILED:
-            printf("ERROR: Gateway rejected the keys.\n");
+            printf("Join Failed.\n");
             break;
+
+        case EV_TXCOMPLETE:
+            printf("Uplink complete.\n");
+            uint32_t wait_time = sec2osticks(TX_INTERVAL + (rand() % 10));
+            os_setTimedCallback(&sendjob, os_getTime() + wait_time, do_send);
+            break;
+
         default:
-            printf("Event Type: %d\n", ev);
             break;
     }
 }
@@ -128,6 +185,8 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/* --- GPS Code --- */
 uint8_t rxBuffer[128] = {0};
 uint8_t rxIndex = 0;
 uint8_t rxData;
@@ -266,29 +325,30 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_IT(&huart1, &rxData, 1);
-  os_init();         // Initialize LMIC
-  LMIC_reset();      // Reset the MAC state
-  do_send(&sendjob); // Start the first transmission
+  /* --- System Initialization --- */
+    active_tracker_id = read_dip_switches();
+    printf("Booting Tracker ID: %d\n", active_tracker_id);
 
-  /* USER CODE END 2 */
+    HAL_UART_Receive_IT(&huart1, &rxData, 1);
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET); // red
-	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET); // YELLOW
-	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET); // GREEN
-	  os_runloop_once(); // This is the "Engine" that must run constantly
-	  if (sentence_ready == 1) {
-	        sentence_ready = 0; // Reset the flag immediately
-	  }
-	  /*Get_GPS_Data(gps_rx_buffer, sizeof(gps_rx_buffer));
+    os_init();
+    LMIC_reset();
+    LMIC_setClockError(MAX_CLOCK_ERROR * 5 / 100);
 
-	  // 2. Format the payload with the Tracker ID
-	  // Example output: "Tracker:1,Data:$GNGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47"
-	  snprintf(lora_payload, sizeof(lora_payload), "Tracker:%d,Data:%s", TRACKER_ID, (char*)gps_rx_buffer);*/
+    do_send(&sendjob);
+    /* USER CODE END 2 */
+
+    /* Infinite loop */
+    /* USER CODE BEGIN WHILE */
+    while (1)
+    {
+        /* --- Main Execution Loop --- */
+        os_runloop_once();
+
+        if (sentence_ready == 1) {
+            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+            sentence_ready = 0;
+        }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -368,7 +428,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;

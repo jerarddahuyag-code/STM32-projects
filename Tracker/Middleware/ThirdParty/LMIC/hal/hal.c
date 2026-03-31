@@ -92,7 +92,10 @@ bit_t lmic_hal_radio_spi_is_busy() {
 // --- 4. Timing & Waiting ---
 
 u4_t lmic_hal_ticks (void) {
-    return (u4_t)__HAL_TIM_GET_COUNTER(&htim2);
+	uint32_t raw_us = (u4_t)__HAL_TIM_GET_COUNTER(&htim2);
+
+    uint32_t scaled_ticks = (uint32_t)( ((uint64_t)raw_us * OSTICKS_PER_SEC) / 1000000 );
+    return scaled_ticks;
 }
 
 u4_t lmic_hal_waitUntil (u4_t time) {
