@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include <stdio.h>
+#include "lmic.h"
+#include "../../Middleware/ThirdParty/LMIC/hal/hal.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,10 +47,23 @@ SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
 
-UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+const unsigned HEARTBEAT_INTERVAL = 3600; // 1 Hour
+static osjob_t sendjob;
+
+const lmic_pinmap lmic_pins = {
+    .nss = 0,
+    .rxtx = LMIC_UNUSED_PIN,
+    .rst = 0,
+    .dio = {0, 0, LMIC_UNUSED_PIN},
+};
+
+/* --- Ground Station Identity --- */
+void os_getArtEui (u1_t* buf) { memcpy(buf, "\x00\x00\x00\x00\x00\x00\x00\x00", 8); }
+void os_getDevEui (u1_t* buf) { memcpy(buf, "\xAA\xBB\xCC\xDD\xEE\xFF\x11\x22", 8); } // Little Endian
+void os_getDevKey (u1_t* buf) { memcpy(buf, "\xd1\xf6\x4f\xda\xef\x7d\xf2\xa8\xa4\x23\xc6\x35\x9a\x00\xcc\x2e", 16); } // Big Endian
 
 /* USER CODE END PV */
 
@@ -55,7 +71,6 @@ UART_HandleTypeDef huart2;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
-static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
@@ -65,6 +80,72 @@ static void MX_TIM2_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+static osjob_t sendjob;
+
+/* --- LoRaWAN Transmission & Event Logic --- */
+// A simple function to send an empty "Heartbeat" to keep the routing alive
+void do_send(osjob_t* j) {
+    if (LMIC.opmode & OP_TXRXPEND) {
+        printf("OP_TXRXPEND, not sending heartbeat\n");
+    } else {
+        uint8_t dummy_payload[1] = {0x00};
+        LMIC_setTxData2(1, dummy_payload, 1, 0);
+        printf("Sent Network Heartbeat.\n");
+    }
+}
+
+// Function to extract and print data from ChirpStack to the laptop
+void process_downlink() {
+    if (LMIC.dataLen) {
+        printf("\n--- INCOMING DASHBOARD DATA ---\n");
+        printf("Port: %d\n", LMIC.txrxFlags & TXRX_PORT ? LMIC.frame[LMIC.dataBeg - 1] : 0);
+        printf("Size: %d bytes\n", LMIC.dataLen);
+
+        printf("Payload (Hex): ");
+        for (int i = 0; i < LMIC.dataLen; i++) {
+            printf("%02X ", LMIC.frame[LMIC.dataBeg + i]);
+        }
+        printf("\n-------------------------------\n");
+    }
+}
+
+void onEvent (ev_t ev) {
+    switch(ev) {
+        case EV_JOINING:
+            printf("Ground Station Joining...\n");
+            break;
+
+        case EV_JOINED:
+            printf("Join Success. Enabling Class C Listening Mode...\n");
+            LMIC_setLinkCheckMode(0);
+
+            // Enable Class C after successful join
+            LMIC_enableClassC(1);
+
+            // Kick off the 1-hour heartbeat cycle
+            do_send(&sendjob);
+            break;
+
+        case EV_JOIN_FAILED:
+            printf("Join Failed.\n");
+            break;
+
+        case EV_TXCOMPLETE:
+            // In Class C, downlinks that arrive during a TX window trigger here
+            process_downlink();
+
+            // Schedule the next heartbeat (1 hour)
+            os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(HEARTBEAT_INTERVAL), do_send);
+            break;
+		case EV_RXCOMPLETE:
+			// In Class C, asynchronous downlinks trigger this event
+			process_downlink();
+			break;
+
+		default:
+			break;
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -97,17 +178,20 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_SPI1_Init();
-  MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-
+  os_init();
+  LMIC_reset();
+  LMIC_setClockError(MAX_CLOCK_ERROR * 5 / 100);
+  do_send(&sendjob);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    os_runloop_once();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -187,7 +271,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -250,41 +334,6 @@ static void MX_TIM2_Init(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 9600;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
-
-/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -337,36 +386,30 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, RED_LED_Pin|GPIO_PIN_12, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|GREEN_LED_Pin|YELLOW_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : DIP_SW_2_Pin DIP_SW_3_Pin DIP_SW_4_Pin */
-  GPIO_InitStruct.Pin = DIP_SW_2_Pin|DIP_SW_3_Pin|DIP_SW_4_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : RED_LED_Pin PA12 */
-  GPIO_InitStruct.Pin = RED_LED_Pin|GPIO_PIN_12;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PB0 GREEN_LED_Pin YELLOW_LED_Pin */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GREEN_LED_Pin|YELLOW_LED_Pin;
+  /*Configure GPIO pin : PB0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB1 DIP_SW_1_Pin PB6 BUTTON_Pin */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|DIP_SW_1_Pin|GPIO_PIN_6|BUTTON_Pin;
+  /*Configure GPIO pins : PB1 PB6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA12 */
+  GPIO_InitStruct.Pin = GPIO_PIN_12;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

@@ -1,0 +1,4 @@
+../Middleware/ThirdParty/LMIC/lmic/lmic_util.c:53:1:LMIC_f2sflt16	7
+../Middleware/ThirdParty/LMIC/lmic/lmic_util.c:139:1:LMIC_f2sflt12	7
+../Middleware/ThirdParty/LMIC/lmic/lmic_util.c:223:1:LMIC_f2uflt16	6
+../Middleware/ThirdParty/LMIC/lmic/lmic_util.c:295:1:LMIC_f2uflt12	6

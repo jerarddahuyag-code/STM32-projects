@@ -1,0 +1,4 @@
+../Middleware/ThirdParty/LMIC/aes/other.c:42:13:shift_left	4
+../Middleware/ThirdParty/LMIC/aes/other.c:56:13:os_aes_cmac	10
+../Middleware/ThirdParty/LMIC/aes/other.c:110:13:os_aes_ctr	4
+../Middleware/ThirdParty/LMIC/aes/other.c:126:6:os_aes_generic	6

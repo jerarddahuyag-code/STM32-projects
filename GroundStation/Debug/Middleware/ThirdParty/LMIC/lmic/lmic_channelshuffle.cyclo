@@ -1,0 +1,3 @@
+../Middleware/ThirdParty/LMIC/lmic/lmic_channelshuffle.c:88:5:LMIC_findNextChannel	10
+../Middleware/ThirdParty/LMIC/lmic/lmic_channelshuffle.c:154:17:sidewaysSum16	2
+../Middleware/ThirdParty/LMIC/lmic/lmic_channelshuffle.c:180:17:findNthSetBit	7

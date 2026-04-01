@@ -1,0 +1,16 @@
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:35:7:LMIC_enableSubBand	1
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:40:7:LMIC_disableSubBand	1
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:45:7:LMIC_disableChannel	1
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:54:7:LMIC_enableChannel	1
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:63:7:LMICeulike_canMapChannels	6
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:85:7:LMICeulike_mapChannels	5
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:109:7:LMICeulike_isDataRateFeasible	5
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:127:6:LMICeulike_initJoinLoop	2
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:145:6:LMICeulike_updateTx	2
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:169:10:LMICeulike_nextJoinState	3
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:231:6:LMICeulike_processJoinAcceptCFList	4
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:251:6:LMICeulike_saveAdrState	1
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:260:7:LMICeulike_compareAdrState	2
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:266:6:LMICeulike_restoreAdrState	1
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:275:6:LMICeulike_setRx1Freq	2
+../Middleware/ThirdParty/LMIC/lmic/lmic_eu_like.c:285:1:LMICeulike_txDoneFSK	1

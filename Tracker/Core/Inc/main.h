@@ -90,10 +90,10 @@ void Error_Handler(void);
 #define LORA_NSS_GPIO_Port GPIOB
 
 // Radio Reset
-#define LORA_RST_Pin GPIO_PIN_12  // If you have a reset pin connected
-#define LORA_RST_GPIO_Port GPIOA // Adjust if Reset is on a different pin
+#define LORA_RST_Pin GPIO_PIN_12
+#define LORA_RST_GPIO_Port GPIOA
 
-// LoRa Interrupts (Crucial for 16 trackers)
+// LoRa Interrupts
 #define LORA_DIO0_Pin GPIO_PIN_1
 #define LORA_DIO0_GPIO_Port GPIOB
 
