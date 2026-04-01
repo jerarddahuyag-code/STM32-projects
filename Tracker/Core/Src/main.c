@@ -50,7 +50,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define TRACKER_ID 1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -114,62 +113,6 @@ void os_getDevEui (u1_t* buf) {
     memcpy(buf, Fleet[active_tracker_id].devEui, 8);
 }
 
-// 3. Simple TX Job
-static osjob_t sendjob;
-
-/* --- LoRaWAN Transmission & Event Logic --- */
-void do_send(osjob_t* j) {
-    if (LMIC.opmode & OP_TXRXPEND) {
-        printf("OP_TXRXPEND, not sending\n");
-    } else {
-        int32_t lat_int = (int32_t)(decimalLat * 100000);
-        int32_t lon_int = (int32_t)(decimalLong * 100000);
-        uint8_t payload[8];
-
-        payload[0] = (lat_int >> 24) & 0xFF;
-        payload[1] = (lat_int >> 16) & 0xFF;
-        payload[2] = (lat_int >> 8) & 0xFF;
-        payload[3] = lat_int & 0xFF;
-
-        payload[4] = (lon_int >> 24) & 0xFF;
-        payload[5] = (lon_int >> 16) & 0xFF;
-        payload[6] = (lon_int >> 8) & 0xFF;
-        payload[7] = lon_int & 0xFF;
-
-        LMIC_setTxData2(1, payload, sizeof(payload), 0);
-        printf("Queued GPS: Lat %f, Lon %f\n", decimalLat, decimalLong);
-    }
-}
-
-void onEvent (ev_t ev) {
-    switch(ev) {
-        case EV_JOINING:
-            printf("Joining...\n");
-            for (int i = 0; i < 16; i++) {
-                if (i != 0 && i != 1) { LMIC_disableChannel(i); }
-            }
-            break;
-
-        case EV_JOINED:
-            printf("Join Success.\n");
-            LMIC_setLinkCheckMode(0);
-            do_send(&sendjob);
-            break;
-
-        case EV_JOIN_FAILED:
-            printf("Join Failed.\n");
-            break;
-
-        case EV_TXCOMPLETE:
-            printf("Uplink complete.\n");
-            uint32_t wait_time = sec2osticks(TX_INTERVAL + (rand() % 10));
-            os_setTimedCallback(&sendjob, os_getTime() + wait_time, do_send);
-            break;
-
-        default:
-            break;
-    }
-}
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -289,6 +232,59 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     HAL_UART_Receive_IT(&huart1,&rxData,1); // Enabling interrupt receive again
   }
 }
+
+/* --- LoRaWAN Transmission & Event Logic --- */
+void do_send(osjob_t* j) {
+    if (LMIC.opmode & OP_TXRXPEND) {
+        printf("OP_TXRXPEND, not sending\n");
+    } else {
+        int32_t lat_int = (int32_t)(decimalLat * 100000);
+        int32_t lon_int = (int32_t)(decimalLong * 100000);
+        uint8_t payload[8];
+
+        payload[0] = (lat_int >> 24) & 0xFF;
+        payload[1] = (lat_int >> 16) & 0xFF;
+        payload[2] = (lat_int >> 8) & 0xFF;
+        payload[3] = lat_int & 0xFF;
+
+        payload[4] = (lon_int >> 24) & 0xFF;
+        payload[5] = (lon_int >> 16) & 0xFF;
+        payload[6] = (lon_int >> 8) & 0xFF;
+        payload[7] = lon_int & 0xFF;
+
+        LMIC_setTxData2(1, payload, sizeof(payload), 0);
+        printf("Queued GPS: Lat %f, Lon %f\n", decimalLat, decimalLong);
+    }
+}
+
+void onEvent (ev_t ev) {
+    switch(ev) {
+        case EV_JOINING:
+            printf("Joining...\n");
+            for (int i = 0; i < 16; i++) {
+                if (i != 0 && i != 1) { LMIC_disableChannel(i); }
+            }
+            break;
+
+        case EV_JOINED:
+            printf("Join Success.\n");
+            LMIC_setLinkCheckMode(0);
+            do_send(&sendjob);
+            break;
+
+        case EV_JOIN_FAILED:
+            printf("Join Failed.\n");
+            break;
+
+        case EV_TXCOMPLETE:
+            printf("Uplink complete.\n");
+            os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL + (rand() % 10)), do_send);
+            break;
+
+        default:
+            break;
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -346,7 +342,6 @@ int main(void)
         os_runloop_once();
 
         if (sentence_ready == 1) {
-            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
             sentence_ready = 0;
         }
     /* USER CODE END WHILE */
