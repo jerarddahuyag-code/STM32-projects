@@ -62,7 +62,7 @@ const lmic_pinmap lmic_pins = {
 
 /* --- Ground Station Identity --- */
 void os_getArtEui (u1_t* buf) { memcpy(buf, "\x00\x00\x00\x00\x00\x00\x00\x00", 8); }
-void os_getDevEui (u1_t* buf) { memcpy(buf, "\xAA\xBB\xCC\xDD\xEE\xFF\x11\x22", 8); } // Little Endian
+void os_getDevEui (u1_t* buf) { memcpy(buf, "\xb8\x16\x4e\x68\xa4\x42\x54\x7e", 8); }
 void os_getDevKey (u1_t* buf) { memcpy(buf, "\xd1\xf6\x4f\xda\xef\x7d\xf2\xa8\xa4\x23\xc6\x35\x9a\x00\xcc\x2e", 16); } // Big Endian
 
 /* USER CODE END PV */
