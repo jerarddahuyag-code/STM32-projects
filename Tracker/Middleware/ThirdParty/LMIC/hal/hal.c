@@ -92,10 +92,10 @@ bit_t lmic_hal_radio_spi_is_busy() {
 // --- 4. Timing & Waiting ---
 
 u4_t lmic_hal_ticks (void) {
-	//uint32_t raw_us = (u4_t)__HAL_TIM_GET_COUNTER(&htim2);
+	/*uint32_t raw_us = (u4_t)__HAL_TIM_GET_COUNTER(&htim2);
 
-	//uint32_t scaled_ticks = (uint32_t)( ((uint64_t)raw_us * OSTICKS_PER_SEC) / 1000000 );
-	//return scaled_ticks;
+	uint32_t scaled_ticks = (uint32_t)( ((uint64_t)raw_us * OSTICKS_PER_SEC) / 1000000 );
+	return scaled_ticks;*/
 	// This static variable persists between calls to track overflows
 	static uint8_t overflow = 0;
 
@@ -123,14 +123,14 @@ u4_t lmic_hal_ticks (void) {
 }
 
 u4_t lmic_hal_waitUntil (u4_t time) {
-    //s4_t delta = (s4_t)(time - lmic_hal_ticks());
-    //if (delta < 0) return (u4_t)-delta; // We are late
-    //while ((s4_t)(time - lmic_hal_ticks()) > 0);
-    //return 0; // On time
+    s4_t delta = (s4_t)(time - lmic_hal_ticks());
+    if (delta < 0) return (u4_t)-delta; // We are late
+    while ((s4_t)(time - lmic_hal_ticks()) > 0);
+    return 0; // On time
 
     // Calculate the difference between the target time and current time.
 	// Casting to a signed integer (s4_t) handles 32-bit wrap-around natively.
-	s4_t delta = (s4_t)(time - os_getTime());
+	/*s4_t delta = (s4_t)(time - os_getTime());
 
 	// If delta is negative, the target time has already passed.
 	// Return how late we are so the library can log it or adjust.
@@ -150,7 +150,7 @@ u4_t lmic_hal_waitUntil (u4_t time) {
 	}
 
 	// We reached the exact tick without being late.
-	return 0;
+	return 0;*/
 }
 
 u1_t lmic_hal_checkTimer (u4_t targettime) {

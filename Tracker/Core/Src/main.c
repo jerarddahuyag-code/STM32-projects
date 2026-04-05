@@ -261,11 +261,10 @@ void onEvent (ev_t ev) {
     switch(ev) {
         case EV_JOINING:
             printf("Joining...\n");
-            for (int i = 0; i < 16; i++) {
+            /*for (int i = 0; i < 16; i++) {
                 if (i != 0 && i != 1) { LMIC_disableChannel(i); }
-            }
+            }*/
             break;
-
         case EV_JOINED:
             printf("Join Success.\n");
             LMIC_setLinkCheckMode(0);
@@ -331,6 +330,10 @@ int main(void)
     LMIC_reset();
     LMIC_setClockError(MAX_CLOCK_ERROR * 5 / 100);
 
+    // Timing Tester code
+    /*ostime_t next_10s_tick = os_getTime() + sec2osticks(10);
+    int tick_count = 0;*/
+
     do_send(&sendjob);
     /* USER CODE END 2 */
 
@@ -341,6 +344,19 @@ int main(void)
         /* --- Main Execution Loop --- */
         os_runloop_once();
 
+        /*
+         Timing Tester code
+        if ((s4_t)(os_getTime() - next_10s_tick) >= 0) {
+
+		  tick_count++;
+		  printf("TICK %d: 10 LMIC seconds have passed.\n", tick_count);
+
+		  // Toggle the Green LED to give you a visual stopwatch cue
+		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
+
+		  // Schedule the next tick exactly 10 seconds from the LAST target
+		  next_10s_tick = os_getTime() + sec2osticks(10);
+	  	}*/
         if (sentence_ready == 1) {
             sentence_ready = 0;
         }

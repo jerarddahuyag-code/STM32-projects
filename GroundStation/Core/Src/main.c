@@ -50,7 +50,7 @@ TIM_HandleTypeDef htim2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-const unsigned HEARTBEAT_INTERVAL = 3600; // 1 Hour
+const unsigned HEARTBEAT_INTERVAL = 60; // 1 Hour
 static osjob_t sendjob;
 
 const lmic_pinmap lmic_pins = {
@@ -96,18 +96,55 @@ void do_send(osjob_t* j) {
 
 // Function to extract and print data from ChirpStack to the laptop
 void process_downlink() {
-    if (LMIC.dataLen) {
-        printf("\n--- INCOMING DASHBOARD DATA ---\n");
-        printf("Port: %d\n", LMIC.txrxFlags & TXRX_PORT ? LMIC.frame[LMIC.dataBeg - 1] : 0);
-        printf("Size: %d bytes\n", LMIC.dataLen);
+	// Check if there is any data attached to the event
+	if (LMIC.dataLen > 0) {
 
-        printf("Payload (Hex): ");
-        for (int i = 0; i < LMIC.dataLen; i++) {
-            printf("%02X ", LMIC.frame[LMIC.dataBeg + i]);
-        }
-        printf("\n-------------------------------\n");
-    }
+		// Verify the payload is a multiple of our 9-byte structure
+		if ((LMIC.dataLen % 9) == 0) {
+			int num_trackers = LMIC.dataLen / 9;
+			printf("\n--- Downlink Received: %d Trackers ---\n", num_trackers);
+
+			// Loop through the buffer and unpack each tracker bundle
+			for (int i = 0; i < num_trackers; i++) {
+
+				// Calculate the starting byte for this specific tracker
+				int offset = LMIC.dataBeg + (i * 9);
+
+				// Byte 0: Tracker ID
+				uint8_t tracker_id = LMIC.frame[offset];
+
+				// Bytes 1-4: Latitude (Reconstruct the 32-bit integer)
+				// We cast to int32_t to properly handle negative coordinates
+				int32_t lat_int = (LMIC.frame[offset + 1] << 24) |
+								  (LMIC.frame[offset + 2] << 16) |
+								  (LMIC.frame[offset + 3] << 8) |
+								  (LMIC.frame[offset + 4]);
+
+				// Bytes 5-8: Longitude (Reconstruct the 32-bit integer)
+				int32_t lon_int = (LMIC.frame[offset + 5] << 24) |
+								  (LMIC.frame[offset + 6] << 16) |
+								  (LMIC.frame[offset + 7] << 8) |
+								  (LMIC.frame[offset + 8]);
+
+				// Convert the integers back to float decimal coordinates
+				float lat = lat_int / 100000.0f;
+				float lon = lon_int / 100000.0f;
+
+				// Print the clean, comma-separated data string!
+				printf("%d,%f,%f\n", tracker_id, lat, lon);
+			}
+			printf("--------------------------------------\n");
+
+			// Optional: Toggle an LED here so you get a physical blink every 15s
+			// HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_x);
+
+		} else {
+			// We got a downlink, but it wasn't our 9-byte structure (maybe a MAC command)
+			printf("[WARN] Received %d bytes. Not a valid GPS bundle.\n", LMIC.dataLen);
+		}
+	}
 }
+
 
 void onEvent (ev_t ev) {
     switch(ev) {
