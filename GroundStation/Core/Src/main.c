@@ -47,6 +47,7 @@ SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -73,8 +74,9 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -86,11 +88,9 @@ static osjob_t sendjob;
 // A simple function to send an empty "Heartbeat" to keep the routing alive
 void do_send(osjob_t* j) {
     if (LMIC.opmode & OP_TXRXPEND) {
-        printf("OP_TXRXPEND, not sending heartbeat\n");
     } else {
         uint8_t dummy_payload[1] = {0x00};
         LMIC_setTxData2(1, dummy_payload, 1, 0);
-        printf("Sent Network Heartbeat.\n");
     }
 }
 
@@ -102,7 +102,6 @@ void process_downlink() {
 		// Verify the payload is a multiple of our 9-byte structure
 		if ((LMIC.dataLen % 9) == 0) {
 			int num_trackers = LMIC.dataLen / 9;
-			printf("\n--- Downlink Received: %d Trackers ---\n", num_trackers);
 
 			// Loop through the buffer and unpack each tracker bundle
 			for (int i = 0; i < num_trackers; i++) {
@@ -138,9 +137,6 @@ void process_downlink() {
 			// Optional: Toggle an LED here so you get a physical blink every 15s
 			// HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_x);
 
-		} else {
-			// We got a downlink, but it wasn't our 9-byte structure (maybe a MAC command)
-			printf("[WARN] Received %d bytes. Not a valid GPS bundle.\n", LMIC.dataLen);
 		}
 	}
 }
@@ -217,6 +213,7 @@ int main(void)
   MX_SPI1_Init();
   MX_USART2_UART_Init();
   MX_TIM2_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   os_init();
   LMIC_reset();
@@ -371,6 +368,41 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_7B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -454,7 +486,14 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+PUTCHAR_PROTOTYPE
+{
+  /* Place your implementation of fputc here */
+  /* e.g. write a character to the USART1 and Loop until the end of transmission */
+  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
 
+  return ch;
+}
 /* USER CODE END 4 */
 
 /**
