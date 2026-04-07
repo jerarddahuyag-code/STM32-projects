@@ -51,7 +51,7 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-const unsigned HEARTBEAT_INTERVAL = 60; // 1 Hour
+const unsigned HEARTBEAT_INTERVAL = 3500; // 1 Hour
 static osjob_t sendjob;
 
 const lmic_pinmap lmic_pins = {
@@ -88,6 +88,7 @@ static osjob_t sendjob;
 // A simple function to send an empty "Heartbeat" to keep the routing alive
 void do_send(osjob_t* j) {
     if (LMIC.opmode & OP_TXRXPEND) {
+    	printf("not sending \n");
     } else {
         uint8_t dummy_payload[1] = {0x00};
         LMIC_setTxData2(1, dummy_payload, 1, 0);
@@ -100,43 +101,43 @@ void process_downlink() {
 	if (LMIC.dataLen > 0) {
 
 		// Verify the payload is a multiple of our 9-byte structure
-		if ((LMIC.dataLen % 9) == 0) {
-			int num_trackers = LMIC.dataLen / 9;
+		// Verify it's a valid 10-byte structure bundle
+		if ((LMIC.dataLen % 10) == 0) {
+			int num_trackers = LMIC.dataLen / 10;
 
-			// Loop through the buffer and unpack each tracker bundle
 			for (int i = 0; i < num_trackers; i++) {
+				// Step size is now 10
+				int offset = LMIC.dataBeg + (i * 10);
 
-				// Calculate the starting byte for this specific tracker
-				int offset = LMIC.dataBeg + (i * 9);
-
-				// Byte 0: Tracker ID
+				// 1. Extract Tracker ID
 				uint8_t tracker_id = LMIC.frame[offset];
 
-				// Bytes 1-4: Latitude (Reconstruct the 32-bit integer)
-				// We cast to int32_t to properly handle negative coordinates
-				int32_t lat_int = (LMIC.frame[offset + 1] << 24) |
-								  (LMIC.frame[offset + 2] << 16) |
-								  (LMIC.frame[offset + 3] << 8) |
-								  (LMIC.frame[offset + 4]);
+				// 2. Extract Emergency Flag
+				uint8_t emergency_flag = LMIC.frame[offset + 1];
 
-				// Bytes 5-8: Longitude (Reconstruct the 32-bit integer)
-				int32_t lon_int = (LMIC.frame[offset + 5] << 24) |
-								  (LMIC.frame[offset + 6] << 16) |
-								  (LMIC.frame[offset + 7] << 8) |
-								  (LMIC.frame[offset + 8]);
+				// 3. Extract Latitude (Shifted by 2)
+				int32_t lat_int = (LMIC.frame[offset + 2] << 24) |
+								  (LMIC.frame[offset + 3] << 16) |
+								  (LMIC.frame[offset + 4] << 8) |
+								  (LMIC.frame[offset + 5]);
 
-				// Convert the integers back to float decimal coordinates
+				// 4. Extract Longitude (Shifted by 6)
+				int32_t lon_int = (LMIC.frame[offset + 6] << 24) |
+								  (LMIC.frame[offset + 7] << 16) |
+								  (LMIC.frame[offset + 8] << 8) |
+								  (LMIC.frame[offset + 9]);
+
 				float lat = lat_int / 100000.0f;
 				float lon = lon_int / 100000.0f;
 
-				// Print the clean, comma-separated data string!
-				printf("%d,%f,%f\n", tracker_id, lat, lon);
+				// 5. Transmit the CSV string over USB with the Emergency Status
+				if (emergency_flag == 1) {
+					printf("%d,%.6f,%.6f,EMERGENCY\r\n", tracker_id, lat, lon);
+				} else {
+					printf("%d,%.6f,%.6f,NORMAL\r\n", tracker_id, lat, lon);
+				}
 			}
 			printf("--------------------------------------\n");
-
-			// Optional: Toggle an LED here so you get a physical blink every 15s
-			// HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_x);
-
 		}
 	}
 }
@@ -151,7 +152,7 @@ void onEvent (ev_t ev) {
         case EV_JOINED:
             printf("Join Success. Enabling Class C Listening Mode...\n");
             LMIC_setLinkCheckMode(0);
-
+            LMIC_setAdrMode(0);
             // Enable Class C after successful join
             LMIC_enableClassC(1);
 

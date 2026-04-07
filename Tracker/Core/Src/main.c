@@ -72,8 +72,12 @@ uint8_t gps_rx_buffer[100];
 volatile uint16_t rx_index = 0;
 volatile uint8_t sentence_ready = 0;
 
+// --- Fleet Tracking Variables ---
+volatile uint8_t emergency_mode = 0;    // 0 = Normal, 1 = Emergency
+volatile uint32_t last_button_press = 0; // For debouncing
+unsigned tx_interval = 60;              // Defaults to 60 seconds
+
 /* --- LMIC Timing & Hardware --- */
-const unsigned TX_INTERVAL = 60;
 static osjob_t sendjob;
 
 const lmic_pinmap lmic_pins = {
@@ -172,6 +176,14 @@ void gpsParse(char *strParse){
     decimalLong = nmeaToDecimal(nmeaLong);
 	sentence_ready = 1;
   }
+
+  if (sentence_ready == 1) {
+	  if (decimalLat != 0 && decimalLong != 0) {
+	      HAL_GPIO_WritePin(YELLOW_LED_GPIO_Port, YELLOW_LED_Pin, GPIO_PIN_SET);
+	  } else {
+	      HAL_GPIO_WritePin(YELLOW_LED_GPIO_Port, YELLOW_LED_Pin, GPIO_PIN_RESET);
+	  }
+  }
 }
 
 int gpsValidate(char *nmea){
@@ -240,20 +252,24 @@ void do_send(osjob_t* j) {
     } else {
         int32_t lat_int = (int32_t)(decimalLat * 100000);
         int32_t lon_int = (int32_t)(decimalLong * 100000);
-        uint8_t payload[8];
+        uint8_t payload[9];
+        // Byte 0: Emergency Status (0 or 1)
+        payload[0] = emergency_mode;
 
-        payload[0] = (lat_int >> 24) & 0xFF;
-        payload[1] = (lat_int >> 16) & 0xFF;
-        payload[2] = (lat_int >> 8) & 0xFF;
-        payload[3] = lat_int & 0xFF;
+        // Bytes 1-4: Latitude
+        payload[1] = (lat_int >> 24) & 0xFF;
+        payload[2] = (lat_int >> 16) & 0xFF;
+        payload[3] = (lat_int >> 8) & 0xFF;
+        payload[4] = lat_int & 0xFF;
 
-        payload[4] = (lon_int >> 24) & 0xFF;
-        payload[5] = (lon_int >> 16) & 0xFF;
-        payload[6] = (lon_int >> 8) & 0xFF;
-        payload[7] = lon_int & 0xFF;
+        // Bytes 5-8: Longitude
+        payload[5] = (lon_int >> 24) & 0xFF;
+        payload[6] = (lon_int >> 16) & 0xFF;
+        payload[7] = (lon_int >> 8) & 0xFF;
+        payload[8] = lon_int & 0xFF;
 
+        // Send 9 bytes!
         LMIC_setTxData2(1, payload, sizeof(payload), 0);
-        printf("Queued GPS: Lat %f, Lon %f\n", decimalLat, decimalLong);
     }
 }
 
@@ -261,23 +277,23 @@ void onEvent (ev_t ev) {
     switch(ev) {
         case EV_JOINING:
             printf("Joining...\n");
-            /*for (int i = 0; i < 16; i++) {
-                if (i != 0 && i != 1) { LMIC_disableChannel(i); }
-            }*/
+            HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
             break;
         case EV_JOINED:
             printf("Join Success.\n");
+            HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
             LMIC_setLinkCheckMode(0);
             do_send(&sendjob);
             break;
 
         case EV_JOIN_FAILED:
             printf("Join Failed.\n");
+            HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
             break;
 
         case EV_TXCOMPLETE:
             printf("Uplink complete.\n");
-            os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL + (rand() % 10)), do_send);
+            os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(tx_interval + (rand() % 10)), do_send);
             break;
 
         default:
@@ -335,10 +351,10 @@ int main(void)
     int tick_count = 0;*/
 
     do_send(&sendjob);
-    /* USER CODE END 2 */
+  /* USER CODE END 2 */
 
-    /* Infinite loop */
-    /* USER CODE BEGIN WHILE */
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
     while (1)
     {
         /* --- Main Execution Loop --- */
@@ -614,11 +630,17 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB1 DIP_SW_1_Pin PB6 BUTTON_Pin */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|DIP_SW_1_Pin|GPIO_PIN_6|BUTTON_Pin;
+  /*Configure GPIO pins : PB1 DIP_SW_1_Pin PB6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|DIP_SW_1_Pin|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : BUTTON_INT_Pin */
+  GPIO_InitStruct.Pin = BUTTON_INT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(BUTTON_INT_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -626,17 +648,36 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-	/*
-    if (GPIO_Pin == LORA_DIO0_Pin) {
-        // DIO0 handles "TxDone" or "RxDone"
-        radio_irq_handler_v2(0, os_getTime());
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    if (GPIO_Pin == BUTTON_INT_Pin) {
+
+        uint32_t current_time = HAL_GetTick();
+
+        if (current_time - last_button_press > 15000) {
+            last_button_press = current_time;
+
+            emergency_mode = !emergency_mode;
+
+            if (emergency_mode) {
+                tx_interval = 15;
+                HAL_GPIO_WritePin(RED_LED_GPIO_Port, RED_LED_Pin, GPIO_PIN_SET);
+            } else {
+                tx_interval = 60; // Return to normal interval
+                HAL_GPIO_WritePin(RED_LED_GPIO_Port, RED_LED_Pin, GPIO_PIN_RESET);
+            }
+
+            if ((LMIC.opmode & OP_TXRXPEND) == 0) {
+				printf("[INFO] Radio is free. Forcing immediate uplink...\n");
+				os_clearCallback(&sendjob);
+				os_setCallback(&sendjob, do_send);
+			} else {
+				// If they press the button while a transmission is already in the air,
+				// we don't crash the radio. The emergency byte will just get picked up
+				// naturally on the next scheduled interval!
+				printf("[WARN] Radio is currently busy. Emergency state saved for next window.\n");
+			}
+        }
     }
-    else if (GPIO_Pin == LORA_DIO1_Pin) {
-        // DIO1 handles "RX Timeout" or "RX Window"
-        radio_irq_handler_v2(1, os_getTime());
-    }*/
 }
 /* USER CODE END 4 */
 

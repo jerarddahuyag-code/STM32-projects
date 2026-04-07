@@ -81,8 +81,8 @@ void Error_Handler(void);
 #define GREEN_LED_GPIO_Port GPIOB
 #define YELLOW_LED_Pin GPIO_PIN_5
 #define YELLOW_LED_GPIO_Port GPIOB
-#define BUTTON_Pin GPIO_PIN_7
-#define BUTTON_GPIO_Port GPIOB
+#define BUTTON_INT_Pin GPIO_PIN_7
+#define BUTTON_INT_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 // SPI Chip Select (NSS)
