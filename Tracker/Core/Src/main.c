@@ -98,7 +98,7 @@ typedef struct {
 const TrackerIdentity Fleet[16] = {
     {{0xe7, 0x8e, 0x5f, 0xa8, 0x26, 0xcc, 0x93, 0x10}}, // ID 0
     {{0x0d, 0x0a, 0x23, 0x30, 0x78, 0x94, 0x87, 0x6f}}, // ID 1
-    {{0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03}}  // ID 2
+    {{0x4A, 0xA4, 0x23, 0xC2, 0x6D, 0x3E, 0x4C, 0xB3}}  // ID 2
     // Add remaining DevEUIs here
 };
 
@@ -293,7 +293,7 @@ void onEvent (ev_t ev) {
 
         case EV_TXCOMPLETE:
             printf("Uplink complete.\n");
-            os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(tx_interval + (rand() % 10)), do_send);
+            os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(tx_interval), do_send);
             break;
 
         default:
@@ -376,6 +376,36 @@ int main(void)
         if (sentence_ready == 1) {
             sentence_ready = 0;
         }
+
+        if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7)) {
+
+			uint32_t current_time = HAL_GetTick();
+
+			if (current_time - last_button_press > 15000) {
+				last_button_press = current_time;
+
+				emergency_mode = !emergency_mode;
+
+				if (emergency_mode) {
+					tx_interval = 15;
+					HAL_GPIO_WritePin(RED_LED_GPIO_Port, RED_LED_Pin, GPIO_PIN_SET);
+				} else {
+					tx_interval = 60; // Return to normal interval
+					HAL_GPIO_WritePin(RED_LED_GPIO_Port, RED_LED_Pin, GPIO_PIN_RESET);
+				}
+
+				if ((LMIC.opmode & OP_TXRXPEND) == 0) {
+					printf("[INFO] Radio is free. Forcing immediate uplink...\n");
+					os_clearCallback(&sendjob);
+					os_setCallback(&sendjob, do_send);
+				} else {
+					// If they press the button while a transmission is already in the air,
+					// we don't crash the radio. The emergency byte will just get picked up
+					// naturally on the next scheduled interval!
+					printf("[WARN] Radio is currently busy. Emergency state saved for next window.\n");
+				}
+			}
+		}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -630,17 +660,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB1 DIP_SW_1_Pin PB6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|DIP_SW_1_Pin|GPIO_PIN_6;
+  /*Configure GPIO pins : PB1 DIP_SW_1_Pin PB6 BUTTON_INT_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|DIP_SW_1_Pin|GPIO_PIN_6|BUTTON_INT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : BUTTON_INT_Pin */
-  GPIO_InitStruct.Pin = BUTTON_INT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(BUTTON_INT_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -648,7 +672,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+/*void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     if (GPIO_Pin == BUTTON_INT_Pin) {
 
         uint32_t current_time = HAL_GetTick();
@@ -678,7 +702,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 			}
         }
     }
-}
+}*/
 /* USER CODE END 4 */
 
 /**

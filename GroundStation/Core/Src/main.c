@@ -47,7 +47,6 @@ SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
 
-UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -65,7 +64,7 @@ const lmic_pinmap lmic_pins = {
 void os_getArtEui (u1_t* buf) { memcpy(buf, "\x00\x00\x00\x00\x00\x00\x00\x00", 8); }
 void os_getDevEui (u1_t* buf) { memcpy(buf, "\xb8\x16\x4e\x68\xa4\x42\x54\x7e", 8); }
 void os_getDevKey (u1_t* buf) { memcpy(buf, "\xd1\xf6\x4f\xda\xef\x7d\xf2\xa8\xa4\x23\xc6\x35\x9a\x00\xcc\x2e", 16); } // Big Endian
-
+uint32_t txrxpend_start_time = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -74,9 +73,8 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
-static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+// #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -88,7 +86,7 @@ static osjob_t sendjob;
 // A simple function to send an empty "Heartbeat" to keep the routing alive
 void do_send(osjob_t* j) {
     if (LMIC.opmode & OP_TXRXPEND) {
-    	printf("not sending \n");
+
     } else {
         uint8_t dummy_payload[1] = {0x00};
         LMIC_setTxData2(1, dummy_payload, 1, 0);
@@ -132,12 +130,11 @@ void process_downlink() {
 
 				// 5. Transmit the CSV string over USB with the Emergency Status
 				if (emergency_flag == 1) {
-					printf("%d,%.6f,%.6f,EMERGENCY\r\n", tracker_id, lat, lon);
+					printf("%d,%.6f,%.6f,EMERGENCY\n", tracker_id, lat, lon);
 				} else {
-					printf("%d,%.6f,%.6f,NORMAL\r\n", tracker_id, lat, lon);
+					printf("%d,%.6f,%.6f,NORMAL\n", tracker_id, lat, lon);
 				}
 			}
-			printf("--------------------------------------\n");
 		}
 	}
 }
@@ -146,11 +143,9 @@ void process_downlink() {
 void onEvent (ev_t ev) {
     switch(ev) {
         case EV_JOINING:
-            printf("Ground Station Joining...\n");
             break;
 
         case EV_JOINED:
-            printf("Join Success. Enabling Class C Listening Mode...\n");
             LMIC_setLinkCheckMode(0);
             LMIC_setAdrMode(0);
             // Enable Class C after successful join
@@ -161,7 +156,6 @@ void onEvent (ev_t ev) {
             break;
 
         case EV_JOIN_FAILED:
-            printf("Join Failed.\n");
             break;
 
         case EV_TXCOMPLETE:
@@ -214,7 +208,6 @@ int main(void)
   MX_SPI1_Init();
   MX_USART2_UART_Init();
   MX_TIM2_Init();
-  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   os_init();
   LMIC_reset();
@@ -227,6 +220,41 @@ int main(void)
   while (1)
   {
     os_runloop_once();
+	/*if ((HAL_GetTick() - last_ping_time) >= 60000) {
+		printf("[DEBUG] Ground Station is alive. LMIC is ticking...\n");
+
+		// Reset the timer
+		last_ping_time = HAL_GetTick();
+	}*/
+    /*if (LMIC.opmode & OP_TXRXPEND) {
+
+	  // If we just entered this state, record the start time
+      if (txrxpend_start_time == 0) {
+		  txrxpend_start_time = HAL_GetTick();
+	  }
+
+	  // 2. If it has been stuck for more than 10 seconds (10000 ms)
+	  else if ((HAL_GetTick() - txrxpend_start_time) > 10000) {
+		  printf("\n[WATCHDOG] LMIC Deadlock Detected (Opmode: %d). Forcing reset...\n", LMIC.opmode);
+
+		  // Forcefully clear the stuck flag
+		  LMIC.opmode &= ~OP_TXRXPEND;
+
+		  // Reset our watchdog timer
+		  txrxpend_start_time = 0;
+
+		  // Manually fire the completion event so your code can resume sending heartbeats!
+		  // (Or you can queue a fresh do_send job here)
+		  printf("[WATCHDOG] State cleared. Resuming normal operations.\n");
+
+		  // Optional: If you want to force the next heartbeat immediately:
+		  //os_clearCallback(&sendjob);
+		  //os_setCallback(&sendjob, do_send);
+	  }
+  } else {
+	  // The flag cleared naturally, so reset our watchdog timer
+	  txrxpend_start_time = 0;
+  }*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -369,41 +397,6 @@ static void MX_TIM2_Init(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
-
-/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -487,13 +480,12 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-PUTCHAR_PROTOTYPE
+int __io_putchar(int ch)
 {
-  /* Place your implementation of fputc here */
-  /* e.g. write a character to the USART1 and Loop until the end of transmission */
-  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
-
-  return ch;
+// Support printf over UART
+	HAL_UART_Transmit(&huart2, (uint8_t *) &ch, 1, 0xFFFF);
+	//ITM_SendChar(ch);
+	return ch;
 }
 /* USER CODE END 4 */
 
