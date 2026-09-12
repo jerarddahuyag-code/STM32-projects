@@ -34,7 +34,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define LMIC_ENABLE_arbitrary_clock_error 1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -128,11 +128,14 @@ void process_downlink() {
 				float lat = lat_int / 100000.0f;
 				float lon = lon_int / 100000.0f;
 
+				float snr = LMIC.snr / 4;
+				float rssi = LMIC.rssi - 64;
+
 				// 5. Transmit the CSV string over USB with the Emergency Status
 				if (emergency_flag == 1) {
-					printf("%d,%.6f,%.6f,EMERGENCY\n", tracker_id, lat, lon);
+					printf("%d,%.6f,%.6f,%.2f,%.2f,EMERGENCY\n", tracker_id, lat, lon, snr, rssi);
 				} else {
-					printf("%d,%.6f,%.6f,NORMAL\n", tracker_id, lat, lon);
+					printf("%d,%.6f,%.6f,%.2f,%.2f,NORMAL\n", tracker_id, lat, lon, snr, rssi);
 				}
 			}
 		}

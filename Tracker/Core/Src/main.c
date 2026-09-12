@@ -344,7 +344,7 @@ int main(void)
 
     os_init();
     LMIC_reset();
-    LMIC_setClockError(MAX_CLOCK_ERROR * 5 / 100);
+    // LMIC_setClockError(MAX_CLOCK_ERROR * 5 / 100);
 
     // Timing Tester code
     /*ostime_t next_10s_tick = os_getTime() + sec2osticks(10);

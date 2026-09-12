@@ -1,4 +1,4 @@
-import serial
+ import serial
 import time
 from rich.console import Console
 from rich.table import Table
@@ -24,6 +24,8 @@ def generate_table() -> Table:
     table.add_column("Status", justify="center", style="bold")
     table.add_column("Latitude", justify="right", style="magenta")
     table.add_column("Longitude", justify="right", style="magenta")
+    table.add_column("RSSI", justify="right", style="magenta")
+    table.add_column("SNR", justify="right", style="magenta")
     table.add_column("Last Seen", justify="right", style="dim")
 
     for t_id, data in sorted(tracker_data.items()):
@@ -41,6 +43,8 @@ def generate_table() -> Table:
             status_text,
             f"{data['lat']:.6f}",
             f"{data['lon']:.6f}",
+            f"{data['rssi']:.2f}",
+            f"{data['snr']:.2f}",
             data['last_seen'],
             style=row_style
         )
@@ -72,19 +76,23 @@ def main():
 
                     # Example expected string: "1,7.311640,125.674220,EMERGENCY"
                     parts = raw_line.split(',')
-
+                    print(parts)
                     # Ensure we got exactly 4 pieces of data AND the first piece is a number
-                    if len(parts) == 4 and parts[0].isdigit():
+                    if len(parts) == 6 and parts[0].isdigit():
                         t_id = int(parts[0])
                         lat = float(parts[1])
                         lon = float(parts[2])
-                        status = parts[3]
+                        snr = float(parts[3])
+                        rssi = float(parts[4])
+                        status = parts[5]
 
                         # Update the dictionary with the fresh data
                         tracker_data[t_id] = {
                             "lat": lat,
                             "lon": lon,
                             "status": status,
+                            "rssi": rssi,
+                            "snr": snr,
                             "last_seen": datetime.now().strftime("%H:%M:%S")
                         }
 

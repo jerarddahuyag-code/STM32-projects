@@ -20,6 +20,7 @@ FLEET_MAP = {
 
 # Thread-safe buffer for bundling tracker data
 bundle_buffer = bytearray()
+last_bundle = bytearray()
 buffer_lock = threading.Lock()
 
 # --- MQTT CALLBACKS ---
@@ -69,13 +70,13 @@ def on_message(client, userdata, msg):
             raw_bytes = base64.b64decode(b64_data)
             
             # Step 5: Append to buffer if data is valid (8 bytes)
-            if len(raw_bytes) == 8:
+            if len(raw_bytes) == 9:
                 with buffer_lock:
-                    bundle_buffer.append(tracker_id)
-                    bundle_buffer.extend(raw_bytes)
+                    bundle_buffer.append(tracker_id) # Adds 1 byte
+                    bundle_buffer.extend(raw_bytes)  # Adds 9 bytes
                     print(f"[INFO] Buffered Tracker {tracker_id}. Buffer size: {len(bundle_buffer)} bytes.", flush=True)
             else:
-                print(f"[WARN] Tracker {tracker_id} sent {len(raw_bytes)} bytes. Expected 8. Discarding.", flush=True)
+                print(f"[WARN] Tracker {tracker_id} sent {len(raw_bytes)} bytes. Expected 9. Discarding.", flush=True)
         else:
             print(f"[DEBUG] Ignored DevEUI {dev_eui} (Not in FLEET_MAP).", flush=True)
         
@@ -86,13 +87,14 @@ def on_message(client, userdata, msg):
 def flush_buffer_to_ground_station():
     """Background thread that bundles and sends downlinks every 15 seconds."""
     global bundle_buffer
+    global last_bundle
     
     while True:
         time.sleep(15) 
         
         with buffer_lock:
             if len(bundle_buffer) > 0:
-                print(f"\n[INFO] === 15-Second Timer: Flushing {len(bundle_buffer) // 9} trackers ===")
+                print(f"\n[INFO] === 15-Second Timer: Flushing {len(bundle_buffer) // 10} trackers ===")
                 
                 try:
                     # Convert the binary buffer back to Base64 for the downlink
@@ -122,7 +124,33 @@ def flush_buffer_to_ground_station():
                 
                 finally:
                     # Always clear buffer to prepare for next 15-second window
+                    # Save the current buffer as the last bundle before clearing
+                    last_bundle = bundle_buffer.copy()
                     bundle_buffer.clear()
+            elif len(last_bundle) > 0:
+                print(f"\n[INFO] === 15-Second Timer: No new data. Resending last bundle of {len(last_bundle) // 10} trackers ===")
+                
+                try:
+                    # Resend the last bundle
+                    b64_data = base64.b64encode(last_bundle).decode('utf-8')
+                    
+                    downlink_msg = {
+                        "devEui": GROUND_STATION_EUI,
+                        "confirmed": False,
+                        "fPort": 1,
+                        "data": b64_data
+                    }
+                    
+                    topic = f"application/{APPLICATION_ID}/device/{GROUND_STATION_EUI}/command/down"
+                    result = client.publish(topic, json.dumps(downlink_msg))
+                    
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        print(f"[INFO] Resent last bundle to Ground Station {GROUND_STATION_EUI}.")
+                    else:
+                        print(f"[ERROR] Failed to publish MQTT message. Code: {result.rc}")
+                        
+                except Exception as e:
+                    print(f"[CRITICAL] Resend failure: {repr(e)}")
             else:
                 # No data received in the last 15 seconds
                 pass
